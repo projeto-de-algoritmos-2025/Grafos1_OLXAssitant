@@ -2,7 +2,8 @@ import scrapy
 import json
 
 class OlxMotosSpider(scrapy.Spider):
-    base_url = 'https://www.olx.com.br/autos-e-pecas/motos/estado-df'
+    estados = ['df']#, 'go', 'ms', 'mt', 'to', 'ac', 'am', 'ap', 'ba', 'ce', 'es', 'ma', 'mg', 'pa', 'pb', 'pr', 'pe', 'pi', 'rj', 'rn', 'ro', 'rr', 'rs', 'sc', 'se', 'sp']
+    base_url = 'https://www.olx.com.br/autos-e-pecas/motos/estado-'
     name = 'olx_motos'
     custom_settings = {
         'USER_AGENT': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0',
@@ -27,15 +28,16 @@ class OlxMotosSpider(scrapy.Spider):
     }
     
     def start_requests(self):
-        for page in range(1, 6):
-            print(f"Requesting page {page}")
-            yield scrapy.Request(
-                f'{self.base_url}?o={page}',
-                callback=self.parse,
-                headers={
-                    'Referer': self.base_url if page > 1 else None
-                }
-            )
+        for estado in self.estados:
+            for page in range(1, 11):
+                print(f"Requesting page {page}")
+                yield scrapy.Request(
+                    f'{self.base_url}{estado}?o={page}',
+                    callback=self.parse,
+                    headers={
+                        'Referer': self.base_url if page > 1 else None
+                    }
+                )
 
     def parse(self, response, **kwargs):
         print(f"Parsing page: {response.url}")
@@ -46,11 +48,16 @@ class OlxMotosSpider(scrapy.Spider):
         for anuncio in anuncios:
             print(f"Processing ad: {anuncio.get('title')}")
             yield {
+                'listId': anuncio.get('listId'),
                 'title': anuncio.get('title'),
                 'price': anuncio.get('price'),
-                'locations': anuncio.get('location'),
+                'estado': anuncio.get('locationDetails', {}).get('uf'),
                 'url': anuncio.get('url'),
-                'publishedAt': anuncio.get('listTime'),
-                'description': anuncio.get('description'),
-                'properties': anuncio.get('properties')
+                'cilindrada': next((prop['value'] for prop in anuncio.get('properties', []) if prop['name'] == 'cubiccms'), None),
+                'marca': next((prop['value'] for prop in anuncio.get('properties', []) if prop['name'] == 'vehicle_brand'), None),
+                'modelo': next((prop['value'] for prop in anuncio.get('properties', []) if prop['name'] == 'vehicle_model'), None),
+                'ano': next((prop['value'] for prop in anuncio.get('properties', []) if prop['name'] == 'regdate'), None),
+                'quilometragem': next((prop['value'] for prop in anuncio.get('properties', []) if prop['name'] == 'mileage'), None),
+                'status_financeiro': next((prop['value'] for prop in anuncio.get('properties', []) if prop['name'] == 'indexed_financial_status'), None),
+                'locations': anuncio.get('location'),
             }
