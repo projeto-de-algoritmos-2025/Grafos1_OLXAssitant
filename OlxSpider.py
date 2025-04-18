@@ -2,7 +2,7 @@ import scrapy
 import json
 
 class OlxMotosSpider(scrapy.Spider):
-    estados = ['df']#, 'go', 'ms', 'mt', 'to', 'ac', 'am', 'ap', 'ba', 'ce', 'es', 'ma', 'mg', 'pa', 'pb', 'pr', 'pe', 'pi', 'rj', 'rn', 'ro', 'rr', 'rs', 'sc', 'se', 'sp']
+    estados = ['df', 'go', 'ms', 'mt', 'to', 'ac', 'am', 'ap', 'ba', 'ce', 'es', 'ma', 'mg', 'pa', 'pb', 'pr', 'pe', 'pi', 'rj', 'rn', 'ro', 'rr', 'rs', 'sc', 'se', 'sp']
     base_url = 'https://www.olx.com.br/autos-e-pecas/motos/estado-'
     name = 'olx_motos'
     custom_settings = {
@@ -29,7 +29,7 @@ class OlxMotosSpider(scrapy.Spider):
     
     def start_requests(self):
         for estado in self.estados:
-            for page in range(1, 11):
+            for page in range(1, 2):
                 print(f"Requesting page {page}")
                 yield scrapy.Request(
                     f'{self.base_url}{estado}?o={page}',
@@ -60,4 +60,5 @@ class OlxMotosSpider(scrapy.Spider):
                 'quilometragem': next((prop['value'] for prop in anuncio.get('properties', []) if prop['name'] == 'mileage'), None),
                 'status_financeiro': next((prop['value'] for prop in anuncio.get('properties', []) if prop['name'] == 'indexed_financial_status'), None),
                 'locations': anuncio.get('location'),
+                'imagens': anuncio.get('images'),
             }
