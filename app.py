@@ -64,3 +64,20 @@ def get_listing(listing_id):
     
     return jsonify({'error': 'Anúncio não encontrado'}), 404
 
+@app.route('/communities')
+def communities_page():
+    partition = mg.detect_communities()
+    
+    # Calcula estatísticas para cada comunidade
+    communities = {}
+    for node, community_id in partition.items():
+        if community_id not in communities:
+            communities[community_id] = []
+        
+        communities[community_id].append(mg.G.nodes[node])
+    
+    # Ordena por tamanho (maior primeiro)
+    sorted_communities = sorted(communities.items(), key=lambda x: len(x[1]), reverse=True)
+    
+    return render_template('communities.html', communities=sorted_communities)
+
