@@ -56,3 +56,67 @@ class Grafo:
         community_map = {old: new for new, old in enumerate(unique_communities)}
         return {node: community_map[comm] for node, comm in communities.items()}
         
+    def get_edges(self):
+        # Obtém todas as arestas no grafo
+        edges = []
+        for node1 in self.nodes:
+            for node2 in self.edges[node1]:
+                if node1 < node2:  # Para evitar duplicatas no grafo não direcionado
+                    edges.append((node1, node2, self.edges[node1][node2]))
+        return edges
+        
+    def kamada_kawai_layout(self, iterations=20): 
+        # Layout Kamada-Kawai: algoritmo de layout de grafo baseado em forças 
+        # -> importante para visualização de grafos e classificação de comunidades
+        
+        # Inicializa com posições aleatórias
+        positions = {node: (np.random.rand(), np.random.rand()) for node in self.nodes}
+        
+        # Parâmetros
+        k = 0.1  # Distância ideal entre nós
+        
+        # Lista de nós para evitar repetições quando se calcula as forças
+        nodes = list(self.nodes.keys())
+        node_count = len(nodes)
+        
+        # Skip factor - apenas calcula forças para um subconjunto de pares de nós
+        skip_factor = max(1, node_count // 100)  # Ajusta com base no número de nós
+        
+        # Iterações do algoritmo de Kamada-Kawai
+        for _ in range(iterations):
+            for i in range(0, node_count, skip_factor):
+                node1 = nodes[i]
+                for j in range(0, node_count, skip_factor):
+                    node2 = nodes[j]
+                    if node1 != node2:
+                        # Get positions
+                        pos1 = positions[node1]
+                        pos2 = positions[node2]
+                        
+                        dx = pos1[0] - pos2[0]
+                        dy = pos1[1] - pos2[1]
+                        distance = max(0.1, np.sqrt(dx*dx + dy*dy))
+                        
+                        force = min(k*k / distance, 5.0) 
+                        if np.isfinite(force):
+                            factor = dx*force*0.05, dy*force*0.05
+                            positions[node1] = (pos1[0] + factor[0], pos1[1] + factor[1])
+            
+            # Calcula forças atrativas entre nós conectados (sempre processa todas as arestas)
+            for node1 in nodes:
+                neighbors = list(self.neighbors(node1))
+                for node2 in neighbors:
+                    pos1 = positions[node1]
+                    pos2 = positions[node2]
+                    
+                    dx = pos1[0] - pos2[0]
+                    dy = pos1[1] - pos2[1]
+                    distance = max(0.1, np.sqrt(dx*dx + dy*dy))
+                    
+                    force = min(distance*distance / k, 5.0) 
+                    if np.isfinite(force):
+                        factor = dx*force*0.05, dy*force*0.05
+                        positions[node1] = (pos1[0] - factor[0], pos1[1] - factor[1])
+                        positions[node2] = (pos2[0] + factor[0], pos2[1] + factor[1])
+        
+        return positions
