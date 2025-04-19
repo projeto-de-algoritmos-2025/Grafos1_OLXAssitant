@@ -34,3 +34,25 @@ class Grafo:
         # Obtém o número de arestas no grafo
         return sum(len(neighbors) for neighbors in self.edges.values()) // 2  # Divide por 2 para grafo não direcionado
     
+    def detect_communities(self):
+        
+        # Cria comunidade
+        
+        # Inicializa cada nó para sua própria comunidade
+        communities = {node: i for i, node in enumerate(self.nodes)}
+        
+        # Conecta nós em comunidades
+        for node in self.nodes:
+            for neighbor in self.neighbors(node):
+                if communities[node] != communities[neighbor]:
+                    old_community = communities[neighbor]
+                    new_community = communities[node]
+                    for n in self.nodes:
+                        if communities[n] == old_community:
+                            communities[n] = new_community
+        
+        # Cria mapa de comunidades
+        unique_communities = set(communities.values())
+        community_map = {old: new for new, old in enumerate(unique_communities)}
+        return {node: community_map[comm] for node, comm in communities.items()}
+        
