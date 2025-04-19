@@ -64,6 +64,30 @@ def get_listing(listing_id):
     
     return jsonify({'error': 'Anúncio não encontrado'}), 404
 
+@app.route('/similar/<int:listing_id>')
+def get_similar(listing_id):
+    listing = None
+    for m in mg.listings:
+        if m['listId'] == listing_id or str(m['listId']) == str(listing_id):
+            listing = m
+            break
+    
+    if not listing:
+        return jsonify([])
+        
+    similar = mg.get_similar_listings(listing['listId'])
+    
+    full_similar = []
+    for s in similar:
+        for m in mg.listings:
+            if m['listId'] == s['id'] or str(m['listId']) == str(s['id']):
+                if 'imagens' in m and 'images' not in m:
+                    m['images'] = m['imagens']
+                
+                full_similar.append({**s, **m})
+                break
+    return jsonify(full_similar)
+
 @app.route('/communities')
 def communities_page():
     partition = mg.detect_communities()
@@ -80,4 +104,8 @@ def communities_page():
     sorted_communities = sorted(communities.items(), key=lambda x: len(x[1]), reverse=True)
     
     return render_template('communities.html', communities=sorted_communities)
+
+@app.route('/interactive-graph')
+def interactive_graph():
+    return render_template('interactive_graph.html')
 
