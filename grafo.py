@@ -120,3 +120,51 @@ class Grafo:
                         positions[node2] = (pos2[0] + factor[0], pos2[1] + factor[1])
         
         return positions
+
+class GrafoOlx:
+    def __init__(self, data_file):
+        self.data_file = data_file
+        self.listings = []
+        self.G = Grafo()
+        self.layout_cache = {}
+        self.load_data()
+        self.build_graph()
+        
+    def load_data(self):
+        """Carrega json da olx"""
+        with open(self.data_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        # Filtra entradas nulas
+        self.listings = [m for m in data if m['listId'] is not None]
+        
+        # Limpa dados de preço
+        for m in self.listings:
+            if m['price'] and isinstance(m['price'], str):
+                m['price_value'] = float(m['price'].replace('R$ ', '').replace('.', '').replace(',', '.'))
+            else:
+                m['price_value'] = 0.0
+                
+            # Converte quilometragem para numérico
+            if m['quilometragem'] and m['quilometragem'].isdigit():
+                m['km'] = int(m['quilometragem'])
+            else:
+                m['km'] = 0
+                
+            # Mapeia 'imagens' para 'images' para manter as keys em inglês
+            if 'imagens' in m and 'images' not in m:
+                m['images'] = m['imagens']
+    
+    def build_graph(self):
+        """Cria o grafo com anúncios como nós e similaridades como arestas"""
+
+        for m in self.listings:
+            self.G.add_node(m['listId'], **m)
+        
+        # Calcula similaridades e adiciona arestas para anúncios com similaridade e peso
+        for i, m1 in enumerate(self.listings):
+            for j, m2 in enumerate(self.listings[i+1:], i+1):
+                similarity = self.calculate_similarity(m1, m2)
+                if similarity > 0.7:
+                    self.G.add_edge(m1['listId'], m2['listId'], weight=similarity)
+    
