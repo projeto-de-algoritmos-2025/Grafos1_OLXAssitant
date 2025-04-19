@@ -1,8 +1,171 @@
 <!DOCTYPE html>
 <html lang="pt-br">
     <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Grafo Interativo</title>
+        <link
+            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css"
+            rel="stylesheet">
+        <link rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+        <style>
+        .control-container {
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+            margin-bottom: 20px;
+        }
+        .graph-container {
+            height: 600px;
+            width: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .node-info-container {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+            display: none;
+        }
+        .similar-listings-container {
+            margin-top: 20px;
+        }
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .info-title {
+            margin-bottom: 15px;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 8px;
+        }
+    </style>
     </head>
     <body>
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+            <div class="container">
+                <a class="navbar-brand" href="/">
+                    <i class="bi bi-listing"></i> Grafo de Recomendação de
+                    Motos
+                </a>
+                <button class="navbar-toggler" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav">
+                        <li class="nav-item">
+                            <a class="nav-link" href="/">Início</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link active"
+                                href="/interactive-graph">Visualização
+                                do Grafo</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/communities">Análise de
+                                Comunidades</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+
+        <div class="container-fluid mt-4">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="control-container">
+                        <h5 class="mb-3">Controles do Grafo</h5>
+                        <form id="graph-controls-form">
+                            <div class="mb-3">
+                                <label for="color-by" class="form-label">Colorir
+                                    Nós Por</label>
+                                <select class="form-select" id="color-by">
+                                    <option value="community" {% if color_by ==
+                                        'community' %}selected{% endif
+                                        %}>Comunidade</option>
+                                    <option value="brand" {% if color_by ==
+                                        'brand' %}selected{% endif
+                                        %}>Marca</option>
+                                    <option value="state" {% if color_by ==
+                                        'state' %}selected{% endif
+                                        %}>Estado</option>
+                                    <option value="price" {% if color_by ==
+                                        'price' %}selected{% endif
+                                        %}>Preço</option>
+                                </select>
+                            </div>
+                            <div class="d-grid gap-2">
+                                <button type="submit"
+                                    class="btn btn-primary">Atualizar
+                                    Grafo</button>
+                                <button type="button" id="reset-view-btn"
+                                    class="btn btn-outline-secondary">Reiniciar
+                                    Visualização</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="node-info-container" id="node-info">
+                        <h5 class="info-title">Informações do Nó</h5>
+                        <div id="node-details">
+                            <!-- Node details will be displayed here -->
+                            <p class="text-muted">Clique em um nó para ver
+                                detalhes</p>
+                        </div>
+                    </div>
+
+                    <div class="similar-listings-container">
+                        <h5 class="info-title">Motos Similares</h5>
+                        <div id="similar-listings">
+                            <!-- Similar listings will be displayed here -->
+                            <p class="text-muted">Clique em um nó para ver
+                                motos similares</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-9">
+                    <div class="position-relative">
+                        <div class="graph-container" id="graph-container">
+                            <!-- Graph will be rendered here -->
+                        </div>
+                        <div class="loading-overlay" id="loading-overlay">
+                            <div class="spinner-border text-primary"
+                                role="status">
+                                <span
+                                    class="visually-hidden">Carregando...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script
+            src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+        <script>
+        // DOM Elements
+        const graphContainer = document.getElementById('graph-container');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const nodeInfoContainer = document.getElementById('node-info');
+        const nodeDetails = document.getElementById('node-details');
+        const similarlistings = document.getElementById('similar-listings');
+        const graphControlsForm = document.getElementById('graph-controls-form');
+        const colorBySelect = document.getElementById('color-by');
+        
+        // Initialize graph
         let graphFigure = null;
         
         // Get highlight_id from URL if present
@@ -308,5 +471,176 @@
             // Update similar listings container
             similarlistings.innerHTML = html;
         }
+        
+        // Function to zoom to a specific node
+        function zoomToNode(pointIndex) {
+            if (!graphFigure || !graphFigure.data || graphFigure.data.length < 2) {
+                return;
+            }
+            
+            try {
+                const nodeTrace = graphFigure.data[1];
+                if (!nodeTrace.x || !nodeTrace.y || 
+                    pointIndex < 0 || pointIndex >= nodeTrace.x.length) {
+                    return;
+                }
+                
+                const x = nodeTrace.x[pointIndex];
+                const y = nodeTrace.y[pointIndex];
+                
+                // Calculate bounds with padding
+                const padding = 0.2; // 20% padding around the node
+                const xMin = x - padding;
+                const xMax = x + padding;
+                const yMin = y - padding;
+                const yMax = y + padding;
+                
+                // Update the layout to zoom to these bounds
+                Plotly.relayout(graphContainer, {
+                    'xaxis.range': [xMin, xMax],
+                    'yaxis.range': [yMin, yMax]
+                });
+                
+                console.log(`Zoomed to node at position (${x}, ${y})`);
+            } catch (error) {
+                console.error('Error zooming to node:', error);
+            }
+        }
+        
+        // Update tryHighlightNode to also zoom to the node
+        function tryHighlightNode(nodeId) {
+            console.log(`Attempting to highlight node: ${nodeId}`);
+            
+            if (!graphFigure || !graphFigure.data || graphFigure.data.length < 2) {
+                console.error('Graph data not fully loaded');
+                return;
+            }
+            
+            // Node data is in the second trace (index 1)
+            const nodeTrace = graphFigure.data[1];
+            if (!nodeTrace.customdata) {
+                console.error('No customdata in node trace');
+                return;
+            }
+            
+            // Convert node IDs to strings for comparison
+            const stringNodeId = String(nodeId);
+            
+            // Log the first few nodes to debug
+            console.log('First few node IDs:', nodeTrace.customdata.slice(0, 5));
+            
+            // Find node index - make sure we're comparing the same types
+            let nodeIndex = -1;
+            for (let i = 0; i < nodeTrace.customdata.length; i++) {
+                if (String(nodeTrace.customdata[i]) === stringNodeId) {
+                    nodeIndex = i;
+                    break;
+                }
+            }
+            
+            console.log(`Node index for ID ${nodeId}: ${nodeIndex}`);
+            
+            if (nodeIndex >= 0) {
+                // Create a fake click event with the point data
+                const fakeClickData = {
+                    points: [{
+                        pointNumber: nodeIndex,
+                        customdata: nodeId,
+                        x: nodeTrace.x[nodeIndex],
+                        y: nodeTrace.y[nodeIndex]
+                    }]
+                };
+                
+                // Call the click handler
+                console.log('Simulating click on node');
+                handleNodeClick(fakeClickData);
+                
+                // Also visually highlight the node (in case the click handler doesn't)
+                highlightNodeInGraph(nodeId, nodeIndex);
+                
+                // Zoom to the node after a short delay
+                setTimeout(() => {
+                    zoomToNode(nodeIndex);
+                }, 500);
+                
+                // Scroll to the node information
+                setTimeout(() => {
+                    document.getElementById('node-info').scrollIntoView({ behavior: 'smooth' });
+                }, 1000);
+            } else {
+                console.error(`Node with ID ${nodeId} not found in graph data`);
+            }
+        }
+        
+        // Update the highlightSimilarNode function to use the new tryHighlightNode function
+        function highlightSimilarNode(nodeId) {
+            // Update the URL to include the new highlight_id
+            const url = new URL(window.location);
+            url.searchParams.set('highlight_id', nodeId);
+            window.history.pushState({}, '', url);
+            
+            // Try to highlight the node
+            tryHighlightNode(nodeId);
+        }
+        
+        // Event Listeners
+        graphControlsForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            // Clear highlight_id from URL when updating graph
+            const url = new URL(window.location);
+            url.searchParams.delete('highlight_id');
+            window.history.pushState({}, '', url);
+            
+            // Reload graph data with new color selection
+            loadGraphData(colorBySelect.value);
+        });
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadGraphData(colorBySelect.value);
+        });
+
+        // Check if we need to highlight a specific node on load
+        if (highlightId) {
+            // Wait for graph to load then trigger node selection
+            document.addEventListener('graphLoaded', function() {
+                console.log('Graph loaded event fired, will attempt to highlight node');
+                // The highlighting is now handled in the loadGraphData function with a delay
+            });
+        }
+
+        // Function to reset the graph view
+        function resetGraphView() {
+            // Clear node highlights
+            clearNodeHighlights();
+            
+            // Reset zoom to show the entire graph
+            Plotly.relayout(graphContainer, {
+                'xaxis.autorange': true,
+                'yaxis.autorange': true,
+                'annotations': []
+            });
+            
+            // Reset URL by removing highlight_id parameter
+            const url = new URL(window.location);
+            url.searchParams.delete('highlight_id');
+            window.history.pushState({}, '', url);
+            
+            // Hide node info container
+            nodeInfoContainer.style.display = 'none';
+            
+            // Reset similar listings display
+            similarlistings.innerHTML = '<p class="text-muted">Click on a node to view similar listings</p>';
+            
+            // Reload the graph with current color selection
+            loadGraphData(colorBySelect.value);
+            
+            console.log('Graph view reset and reloaded');
+        }
+        
+        // Add event listener for reset button
+        document.getElementById('reset-view-btn').addEventListener('click', resetGraphView);
+    </script>
     </body>
 </html>
