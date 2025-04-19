@@ -1,4 +1,5 @@
 import json
+import numpy as np
 from collections import defaultdict
 
 class Grafo:
@@ -168,3 +169,128 @@ class GrafoOlx:
                 if similarity > 0.7:
                     self.G.add_edge(m1['listId'], m2['listId'], weight=similarity)
     
+    def calculate_similarity(self, m1, m2):
+        """Calcula similaridade entre dois anúncios"""
+        similarity = 0.0
+    
+        if m1['marca'] == m2['marca']:
+            similarity += 0.1
+            
+        if m1['modelo'] == m2['modelo']:
+            similarity += 0.3
+        
+        
+        if m1['cilindrada'] == m2['cilindrada']:
+            similarity += 0.4
+        else:
+            
+            try:
+                cil1 = int(''.join(filter(str.isdigit, str(m1['cilindrada']))))
+                cil2 = int(''.join(filter(str.isdigit, str(m2['cilindrada']))))
+                if cil1 <= cil2 * 1.5:
+                    similarity += 0.3
+                elif cil1 >= cil2 * 0.5:
+                    similarity += 0.3
+                else:
+                    similarity -= 0.6
+            except (ValueError, TypeError):
+                pass
+        
+    
+        if m1['estado'] == m2['estado'] or ((m1['modelo'] == m2['modelo'] or m1['marca'] == m2['marca'] )and m1['estado'] == m2['estado'] ):
+            similarity += 0.2
+        else:
+            similarity -= 0.1
+        
+        # Similaridade de preço -> preço mais próximo, maior similaridade
+        if m1['price_value'] > 0 and m2['price_value'] > 0:
+            price_diff = abs(m1['price_value'] - m2['price_value'])
+            max_price = max(m1['price_value'], m2['price_value'])
+            # Se diferença de preço maior que 70% - 50% - 30%, retorna 0 para excluir
+            if price_diff / max_price > 0.7:
+                similarity -= 0.5
+            elif price_diff / max_price > 0.5:
+                similarity -= 0.3
+            elif price_diff / max_price > 0.3:
+                similarity -= 0.2
+            else:
+                similarity += 0.1 * (1 - min(price_diff / max_price, 1))
+    
+    
+        if m1['ano'] and m2['ano'] and m1['ano'].isdigit() and m2['ano'].isdigit():
+            year_diff = abs(int(m1['ano']) - int(m2['ano']))
+            if year_diff <= 3:
+                similarity += 0.1 * (1 - min(year_diff / 3, 1))  # Máximo de 3 anos de diferença
+            else:
+                similarity -= 0.1 * (1 - min(year_diff / 2, 1))  # Máximo de 2 anos de diferença
+        return similarity
+    
+    def get_listings_by_state(self):
+        """Agrupa anúncios por estado"""
+        state_groups = defaultdict(list)
+        for m in self.listings:
+            if m['estado']:
+                state_groups[m['estado']].append(m)
+        return state_groups
+    
+    def get_listings_by_brand(self):
+        """Agrupa anúncios por marca"""
+        brand_groups = defaultdict(list)
+        for m in self.listings:
+            if m['marca']:
+                brand_groups[m['marca']].append(m)
+        return brand_groups
+    
+    def get_similar_listings(self, listing_id, top_n=5):
+        """Encontra os N anúncios mais similares ao anúncio fornecido"""
+        print(f"Procurando por anúncios similares para ID: {listing_id} (tipo: {type(listing_id)})")
+        
+        # Verifica se o nó existe diretamente
+        node_exists = listing_id in self.G.nodes
+        print(f"Node exists directly in graph? {node_exists}")
+        
+        # Se não, tenta comparar strings
+        if not node_exists:
+            str_id = str(listing_id)
+            for graph_node_id in self.G.nodes:
+                if str(graph_node_id) == str_id:
+                    print(f"Encontrei nó por comparação de strings: {graph_node_id}")
+                    listing_id = graph_node_id  # Use o ID do nó real do grafo
+                    node_exists = True
+                    break
+        
+        if not node_exists or listing_id not in self.G.nodes:
+            print(f"Não foi possível encontrar anúncios similares: Nó {listing_id} não encontrado no grafo")
+            return []
+        
+        # Obtém todos os vizinhos com pesos
+        neighbors = [(neighbor, self.G.edges[listing_id][neighbor]['weight']) 
+                     for neighbor in self.G.neighbors(listing_id)]
+        
+        # If there are no neighbors, return empty list
+        if not neighbors:
+            print(f"Nó {listing_id} não tem vizinhos/anúncios similares")
+            return []
+        
+        # Ordena por peso de similaridade
+        neighbors.sort(key=lambda x: x[1], reverse=True)
+        print(f"Encontrei {len(neighbors)} vizinhos para o nó {listing_id}")
+        
+        similar_listings = []
+        for n_id, similarity in neighbors[:top_n]:
+            listing = self.G.nodes[n_id]
+            similar_listings.append({
+                'id': n_id,
+                'title': listing['title'],
+                'price': listing['price'],
+                'marca': listing['marca'],
+                'modelo': listing['modelo'],
+                'ano': listing['ano'],
+                'similarity': similarity
+            })
+        
+        print(f"Retornando {len(similar_listings)} anúncios similares")
+        return similar_listings
+    
+    def detect_communities(self):
+        return self.G.detect_communities()
