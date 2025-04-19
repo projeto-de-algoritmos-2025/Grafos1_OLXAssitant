@@ -1,5 +1,10 @@
 import json
+import matplotlib
+matplotlib.use('Agg')  # Set non-GUI backend
+import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.feature_extraction.text import TfidfVectorizer
 from collections import defaultdict
 
 class Grafo:
@@ -294,3 +299,131 @@ class GrafoOlx:
     
     def detect_communities(self):
         return self.G.detect_communities()
+    
+    def create_interactive_graph_data(self, color_by='community'):
+        """Cria a visualização interativa do grafo utilizando a biblioteca Plotly"""
+        # Tenta obter o layout armazenado primeiro
+        cache_key = f'layout_{len(self.G.nodes)}'  # Chave de cache baseada no tamanho do grafo
+        
+        if cache_key in self.layout_cache:
+            positions = self.layout_cache[cache_key]
+        else:
+            # Obtém posições usando o layout Kamada-Kawai
+            positions = self.G.kamada_kawai_layout()
+            # Armazena o layout
+            self.layout_cache[cache_key] = positions
+        
+        x_nodes = [positions[node][0] for node in self.G.nodes]
+        y_nodes = [positions[node][1] for node in self.G.nodes]
+    
+        edge_x = []
+        edge_y = []
+        edge_weights = []
+        
+        for node1, node2, attrs in self.G.get_edges():
+            x0, y0 = positions[node1]
+            x1, y1 = positions[node2]
+            
+            edge_x.extend([x0, x1, None])
+            edge_y.extend([y0, y1, None])
+            
+            # Get edge weight
+            weight = attrs.get('weight', 1.0)
+            edge_weights.append(weight)
+        
+        node_colors = []
+        color_legend = {}
+        
+        if color_by == 'community':
+            partition = self.detect_communities()
+            unique_communities = set(partition.values())
+            
+            # Cria um mapa de cores para as comunidades aleatóriamente
+            color_map = {comm: f'hsl({int(i * 360 / len(unique_communities))},70%,60%)' 
+                        for i, comm in enumerate(unique_communities)}
+            node_colors = [color_map[partition[node]] for node in self.G.nodes]
+            color_legend = {f"Community {comm}": color for comm, color in color_map.items()}
+            
+        elif color_by == 'brand':
+            brands = set(self.G.nodes[node]['marca'] for node in self.G.nodes)
+            color_map = {brand: f'hsl({int(i * 360 / len(brands))},70%,60%)' 
+                        for i, brand in enumerate(brands)}
+            node_colors = [color_map[self.G.nodes[node]['marca']] for node in self.G.nodes]
+            color_legend = color_map
+            
+        elif color_by == 'state':
+            states = set(self.G.nodes[node]['estado'] for node in self.G.nodes)
+            color_map = {state: f'hsl({int(i * 360 / len(states))},70%,60%)' 
+                        for i, state in enumerate(states)}
+            node_colors = [color_map[self.G.nodes[node]['estado']] for node in self.G.nodes]
+            color_legend = color_map
+            
+        elif color_by == 'price':
+            prices = [self.G.nodes[node].get('price_value', 0) for node in self.G.nodes]
+            max_price = max(prices) if max(prices) > 0 else 1
+            node_colors = [f'hsl({int(240 - 240 * (price / max_price))},70%,60%)' for price in prices]
+            color_legend = {"Lower Price": "hsl(240,70%,60%)", "Higher Price": "hsl(0,70%,60%)"}
+        
+        else:
+            # Cor padrão
+            node_colors = ['#1f77b4'] * len(self.G.nodes)
+            
+        # Dados mostrados ao passar o mouse sobre o nó
+        node_hover_text = []
+        for node in self.G.nodes:
+            node_data = self.G.nodes[node]
+            text = f"<b>{node_data.get('title', 'Anúncio sem título')}</b><br>"
+            text += f"Marca: {node_data.get('marca', 'N/A')}<br>"
+            text += f"Modelo: {node_data.get('modelo', 'N/A')}<br>"
+            text += f"Ano: {node_data.get('ano', 'N/A')}<br>"
+            text += f"Preço: {node_data.get('price', 'N/A')}<br>"
+            text += f"Cilindrada: {node_data.get('cilindrada', 'N/A')}cc<br>"
+            text += f"Localização: {node_data.get('estado', 'N/A')}<br>"
+            text += f"Clique para ver detalhes e anúncios similares"
+            node_hover_text.append(text)
+        
+        node_ids = list(self.G.nodes)
+        
+        return {
+            'positions': positions,
+            'x_nodes': x_nodes,
+            'y_nodes': y_nodes,
+            'edge_x': edge_x,
+            'edge_y': edge_y,
+            'edge_weights': edge_weights,
+            'node_colors': node_colors,
+            'node_hover_text': node_hover_text,
+            'node_ids': node_ids,
+            'color_legend': color_legend
+        }
+    
+    def get_node_data_with_similar(self, node_id, top_n=5):
+        """Obtém os dados do nó e os nós similares para exibição interativa ao clicar no nó do grafo plotado"""
+        
+        node_exists = node_id in self.G.nodes
+        
+        if not node_exists:
+            str_id = str(node_id)
+            for graph_node_id in self.G.nodes:
+                if str(graph_node_id) == str_id:
+                    node_id = graph_node_id
+                    node_exists = True
+                    break
+        
+        # Final check if we have the node
+        if not node_exists or node_id not in self.G.nodes:
+            print(f"Nó não encontrado no grafo: {node_id}")
+            return {
+                'error': 'Nó não encontrado',
+                'node_data': None,
+                'similar_nodes': []
+            }
+        
+        node_data = self.G.nodes[node_id]
+        
+        similar_nodes = self.get_similar_listings(node_id, top_n)
+        
+        return {
+            'node_data': node_data,
+            'similar_nodes': similar_nodes
+        }
