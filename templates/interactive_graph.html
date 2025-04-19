@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+    <head>
+    </head>
+    <body>
+        let graphFigure = null;
+        
+        // Get highlight_id from URL if present
+        const urlParams = new URLSearchParams(window.location.search);
+        const highlightId = urlParams.get('highlight_id');
+
+        // Debug log for highlight_id 
+        if (highlightId) {
+            console.log(`Highlight ID from URL: ${highlightId}`);
+        }
+        
+        // Load graph data
+        async function loadGraphData(colorBy = 'community') {
+            loadingOverlay.style.display = 'flex';
+            
+            try {
+                const response = await fetch(`/api/graph-data?color_by=${colorBy}`);
+                const data = await response.json();
+                
+                // Debug log for graph data
+                console.log('Graph data loaded. Node count:', data.graph.data[1].customdata.length);
+                
+                // Render graph
+                Plotly.react(graphContainer, data.graph.data, data.graph.layout, data.config);
+                
+                // Save reference to graph
+                graphFigure = data.graph;
+                
+                // Add click event
+                graphContainer.on('plotly_click', handleNodeClick);
+                
+                // Dispatch custom event to signal graph is loaded
+                document.dispatchEvent(new CustomEvent('graphLoaded'));
+                
+                // If there's a highlight_id, process it after a short delay to ensure plotly is ready
+                if (highlightId) {
+                    setTimeout(() => {
+                        tryHighlightNode(highlightId);
+                    }, 500);
+                }
+            } catch (error) {
+                console.error('Error loading graph data:', error);
+                alert('Failed to load graph data. Please try again.');
+            } finally {
+                loadingOverlay.style.display = 'none';
+            }
+        }
+        
+        // Handle node click
+        async function handleNodeClick(data) {
+            // Get the point that was clicked
+            const point = data.points[0];
+            
+            // Log the point data for debugging
+            console.log('Node clicked:', point);
+            
+            // Get node ID from customdata
+            const nodeId = point.customdata;
+            
+            console.log('Clicked node ID:', nodeId);
+            
+            // Update URL without triggering a page reload
+            const url = new URL(window.location);
+            url.searchParams.set('highlight_id', nodeId);
+            window.history.pushState({}, '', url);
+            
+            // Show loading
+            loadingOverlay.style.display = 'flex';
+            
+            try {
+                // Get node data
+                const response = await fetch(`/api/node/${nodeId}`);
+                const nodeData = await response.json();
+                
+                console.log('Node data received:', nodeData);
+                
+                // Check for error
+                if (nodeData.error) {
+                    console.error('Error getting node data:', nodeData.error);
+                    return;
+                }
+                
+                // Visually highlight the selected node in the graph
+                highlightNodeInGraph(nodeId, point.pointNumber);
+                
+                // Display node details
+                displayNodeDetails(nodeData.node_data);
+                
+                // Display similar listings
+                displaySimilarlistings(nodeData.similar_nodes);
+                
+                // Show node info container
+                nodeInfoContainer.style.display = 'block';
+                
+            } catch (error) {
+                console.error('Error getting node data:', error);
+                alert('Failed to get node data. Please try again.');
+            } finally {
+                loadingOverlay.style.display = 'none';
+            }
+        }
+        
+        // Function to clear all node highlights and reset the graph appearance
+        function clearNodeHighlights() {
+            if (!graphFigure || !graphFigure.data || graphFigure.data.length < 2) {
+                return; // No graph to reset
+            }
+            
+            try {
+                // Reset node sizes to default
+                const nodeTrace = graphFigure.data[1];
+                const nodeCount = nodeTrace.x ? nodeTrace.x.length : 0;
+                
+                if (nodeCount === 0) return;
+                
+                // Create default arrays
+                const defaultSizes = Array(nodeCount).fill(10);
+                const defaultBorderWidth = Array(nodeCount).fill(1);
+                const defaultBorderColor = Array(nodeCount).fill('#888');
+                const defaultOpacity = Array(nodeCount).fill(1.0);
+                
+                // Apply defaults
+                Plotly.restyle(graphContainer, {
+                    'marker.size': [defaultSizes],
+                    'marker.line.width': [defaultBorderWidth],
+                    'marker.line.color': [defaultBorderColor],
+                    'marker.opacity': [defaultOpacity]
+                }, 1);
+                
+                // Remove any annotations
+                Plotly.relayout(graphContainer, {
+                    'annotations': []
+                });
+            } catch (error) {
+                console.error('Error clearing node highlights:', error);
+            }
+        }
+        
+        // Modify the highlightNodeInGraph function to be more robust
+        function highlightNodeInGraph(nodeId, pointIndex) {
+            if (!graphFigure || !graphFigure.data || graphFigure.data.length < 2) {
+                console.error('Graph data not fully loaded');
+                return;
+            }
+            
+            try {
+                // First, clear all existing highlights
+                clearNodeHighlights();
+                
+                // Get the node trace
+                const nodeTrace = graphFigure.data[1];
+                const nodeCount = nodeTrace.x ? nodeTrace.x.length : 0;
+                
+                if (nodeCount === 0 || pointIndex < 0 || pointIndex >= nodeCount) {
+                    console.error('Invalid point index:', pointIndex);
+                    return;
+                }
+                
+                // Create arrays for styling
+                const newSizes = Array(nodeCount).fill(10);
+                newSizes[pointIndex] = 20; // Make the highlighted node bigger
+                
+                const borderWidth = Array(nodeCount).fill(1);
+                borderWidth[pointIndex] = 3; // Thicker border for highlighted node
+                
+                const borderColor = Array(nodeCount).fill('#888');
+                borderColor[pointIndex] = '#FF0000'; // Red border for highlighted node
+                
+                const newOpacity = Array(nodeCount).fill(0.7); // Increased opacity for better visibility (was 0.3)
+                newOpacity[pointIndex] = 1.0; // Full opacity for highlighted node
+                
+                // Update the node trace with the new appearance
+                Plotly.restyle(graphContainer, {
+                    'marker.size': [newSizes],
+                    'marker.line.width': [borderWidth],
+                    'marker.line.color': [borderColor],
+                    'marker.opacity': [newOpacity]
+                }, 1);
+                
+                // Add a marker annotation if we have coordinates
+                if (nodeTrace.x && nodeTrace.y && 
+                    nodeTrace.x[pointIndex] !== undefined && 
+                    nodeTrace.y[pointIndex] !== undefined) {
+                    
+                    const annotation = {
+                        x: nodeTrace.x[pointIndex],
+                        y: nodeTrace.y[pointIndex],
+                        xref: 'x',
+                        yref: 'y',
+                        text: '★',
+                        showarrow: true,
+                        arrowhead: 0,
+                        ax: 0,
+                        ay: -30,
+                        font: {
+                            color: 'red',
+                            size: 20
+                        }
+                    };
+                    
+                    // Update layout with the annotation
+                    Plotly.relayout(graphContainer, {
+                        annotations: [annotation]
+                    });
+                }
+            } catch (error) {
+                console.error('Error highlighting node in graph:', error);
+            }
+        }
+        
+        // Display node details
+        function displayNodeDetails(nodeData) {
+            // Generate image carousel HTML if images exist
+            let carouselHtml = '';
+            const images = nodeData.images || nodeData.imagens || [];
+            
+            if (images && images.length > 0) {
+                const carouselId = `node-carousel-${nodeData.listId || 'main'}`;
+                carouselHtml = `
+                    <div id="${carouselId}" class="carousel slide mb-3" data-bs-ride="carousel">
+                        <div class="carousel-inner">
+                            ${images.map((img, idx) => `
+                                <div class="carousel-item ${idx === 0 ? 'active' : ''}">
+                                    <img src="${img.original}" class="d-block w-100" alt="${img.originalAlt || 'Imagem do anúncio'}" style="height: 250px; object-fit: contain;">
+                                </div>
+                            `).join('')}
+                        </div>
+                        ${images.length > 1 ? `
+                            <button class="carousel-control-prev" type="button" data-bs-target="#${carouselId}" data-bs-slide="prev">
+                                <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                                <span class="visually-hidden">Anterior</span>
+                            </button>
+                            <button class="carousel-control-next" type="button" data-bs-target="#${carouselId}" data-bs-slide="next">
+                                <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                                <span class="visually-hidden">Próximo</span>
+                            </button>
+                            <div class="carousel-indicators">
+                                ${images.map((_, idx) => `
+                                    <button type="button" data-bs-target="#${carouselId}" data-bs-slide-to="${idx}" ${idx === 0 ? 'class="active" aria-current="true"' : ''} aria-label="Slide ${idx+1}"></button>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+            
+            // Format node details
+            let html = carouselHtml + `
+                <h5>${nodeData.title || 'Unnamed listing'}</h5>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Brand:</strong> ${nodeData.marca || 'N/A'}</p>
+                        <p><strong>Model:</strong> ${nodeData.modelo || 'N/A'}</p>
+                        <p><strong>Year:</strong> ${nodeData.ano || 'N/A'}</p>
+                        <p><strong>Price:</strong> ${nodeData.price || 'N/A'}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Engine:</strong> ${nodeData.cilindrada || 'N/A'} cc</p>
+                        <p><strong>Mileage:</strong> ${nodeData.quilometragem || 'N/A'} km</p>
+                        <p><strong>State:</strong> ${nodeData.estado || 'N/A'}</p>
+                    </div>
+                </div>
+            `;
+            
+            // If URL exists, add button to view listing
+            if (nodeData.url) {
+                html += `
+                    <div class="mt-3">
+                        <a href="${nodeData.url}" target="_blank" class="btn btn-primary">View OLX Listing</a>
+                    </div>
+                `;
+            }
+            
+            // Update node details container
+            nodeDetails.innerHTML = html;
+        }
+        
+        // Display similar listings
+        function displaySimilarlistings(similarNodes) {
+            if (!similarNodes || similarNodes.length === 0) {
+                similarlistings.innerHTML = '<p class="text-muted">No similar listings found</p>';
+                return;
+            }
+            
+            // Create HTML for similar listings
+            let html = '<div class="list-group">';
+            
+            similarNodes.forEach(node => {
+                html += `
+                    <div class="list-group-item list-group-item-action" style="cursor: pointer;" onclick="highlightSimilarNode(${node.id})">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">${node.title || 'Unnamed listing'}</h6>
+                            <small>${(node.similarity * 100).toFixed(0)}% match</small>
+                        </div>
+                        <p class="mb-1">${node.marca || ''} ${node.modelo || ''}, ${node.ano || 'N/A'}</p>
+                        <small>${node.price || 'N/A'} - ${node.cilindrada || 'N/A'}cc - ${node.estado || 'N/A'}</small>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            
+            // Update similar listings container
+            similarlistings.innerHTML = html;
+        }
+    </body>
+</html>
