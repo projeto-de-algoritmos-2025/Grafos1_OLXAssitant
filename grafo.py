@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
+import pandas as pd
 from collections import defaultdict
 
 class Grafo:
@@ -427,3 +428,86 @@ class GrafoOlx:
             'node_data': node_data,
             'similar_nodes': similar_nodes
         }
+        
+    def visualize_state_distribution(self):
+        """Visualiza a distribuição de motocicletas por estado"""
+        state_counts = defaultdict(int)
+        for m in self.listings:
+            if m['estado']:
+                state_counts[m['estado']] += 1
+        
+        # Ordena por contagem
+        sorted_states = sorted(state_counts.items(), key=lambda x: x[1], reverse=True)
+        states, counts = zip(*sorted_states)
+        
+        plt.figure(figsize=(10, 6))
+        plt.bar(states, counts)
+        plt.xlabel('State')
+        plt.ylabel('Number of Anúncios')
+        plt.title('Distribuição de Anúncios por Estado')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        return plt
+    
+    def visualize_brand_distribution(self):
+        """Visualiza a distribuição de motocicletas por marca"""
+        brand_counts = defaultdict(int)
+        for m in self.listings:
+            if m['marca']:
+                brand_counts[m['marca']] += 1
+        
+        # Ordena por contagem
+        sorted_brands = sorted(brand_counts.items(), key=lambda x: x[1], reverse=True)
+        brands, counts = zip(*sorted_brands)
+        
+        plt.figure(figsize=(12, 6))
+        plt.bar(brands, counts)
+        plt.xlabel('Marca')
+        plt.ylabel('Number of Anúncios')
+        plt.title('Distribuição de Anúncios por Marca')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        return plt
+    
+    def visualize_price_distribution(self):
+        """Visualiza a distribuição de preço de motocicletas"""
+        prices = [m['price_value'] for m in self.listings if m['price_value'] > 0]
+        
+        plt.figure(figsize=(10, 6))
+        plt.hist(prices, bins=20)
+        plt.xlabel('Preço (R$)')
+        plt.ylabel('Number of Anúncios')
+        plt.title('Distribuição de Preço de Anúncios')
+        plt.tight_layout()
+        return plt
+
+    def search_listings(self, query_text, top_n=10):
+        """Busca anúncios com base no texto da consulta usando TF-IDF"""
+        # Cria uma lista de documentos de anúncios
+        docs = []
+        for m in self.listings:
+            doc = f"{m['title']} {m['marca']} {m['modelo']} {m['cilindrada']} {m['ano']}"
+            docs.append(doc)
+        
+        # Cria a matriz TF-IDF
+        vectorizer = TfidfVectorizer(stop_words='english')
+        tfidf_matrix = vectorizer.fit_transform(docs)
+        
+        # Transforma a consulta
+        query_vector = vectorizer.transform([query_text])
+        
+        # Calcula a similaridade
+        similarity_scores = cosine_similarity(query_vector, tfidf_matrix)[0]
+        
+        # Obtém os top resultados
+        top_indices = similarity_scores.argsort()[-top_n:][::-1]
+        results = []
+        
+        for idx in top_indices:
+            if similarity_scores[idx] > 0:
+                results.append({
+                    'listing': self.listings[idx],
+                    'similarity': similarity_scores[idx]
+                })
+        
+        return results

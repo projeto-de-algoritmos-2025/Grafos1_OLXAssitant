@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Sistema de Recomendação de Anúncios</title>
+        <link
+            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css"
+            rel="stylesheet">
+        <link rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+        <style>
+        .listing-card {
+            transition: transform 0.3s;
+            height: 100%;
+        }
+        .listing-card:hover {
+            transform: scale(1.03);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        .similarity-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+        }
+        #search-results {
+            position: absolute;
+            width: 100%;
+            z-index: 1000;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .visualization-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .visualization-container img {
+            max-width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+    </style>
+    </head>
+    <body>
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+            <div class="container">
+                <a class="navbar-brand" href="/">
+                    <i class="bi bi-listing"></i> Grafo de Recomendação de
+                    Motos
+                </a>
+                <button class="navbar-toggler" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav me-auto">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="/">Início</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link"
+                                href="/interactive-graph">Visualização
+                                do Grafo</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/communities">Análise de
+                                Comunidades</a>
+                        </li>
+                    </ul>
+                    <div class="d-flex position-relative">
+                        <input id="search-box" class="form-control me-2"
+                            type="search" placeholder="Buscar motos..."
+                            aria-label="Search">
+                        <div id="search-results" class="list-group d-none">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <div class="container mt-4">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card mb-4">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="card-title mb-0">Filtrar Motos</h5>
+                        </div>
+                        <div class="card-body">
+                            <form id="filter-form">
+                                <div class="mb-3">
+                                    <label for="state-filter"
+                                        class="form-label">Estado</label>
+                                    <select class="form-select"
+                                        id="state-filter">
+                                        <option value>Todos os Estados</option>
+                                        {% for state in states %}
+                                        <option value="{{ state }}">{{ state
+                                            }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="brand-filter"
+                                        class="form-label">Marca</label>
+                                    <select class="form-select"
+                                        id="brand-filter">
+                                        <option value>Todas as Marcas</option>
+                                        {% for brand in brands %}
+                                        <option value="{{ brand }}">{{ brand
+                                            }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <button type="submit"
+                                    class="btn btn-primary w-100">Aplicar
+                                    Filtros</button>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="card mb-4">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="card-title mb-0">Estatísticas</h5>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>Total de Motos:</strong> {{
+                                num_listings }}</p>
+                            <p><strong>Nós no Grafo:</strong> {{ num_nodes
+                                }}</p>
+                            <p><strong>Conexões (Arestas):</strong> {{
+                                num_edges }}</p>
+                        </div>
+                    </div>
+                    <div class="card mb-4">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="card-title mb-0">Visualizações</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-grid gap-2">
+                                <button id="show-state-distribution"
+                                    class="btn btn-outline-primary">Distribuição
+                                    por
+                                    Estado</button>
+                                <button id="show-brand-distribution"
+                                    class="btn btn-outline-primary">Distribuição
+                                    por
+                                    Marca</button>
+                                <button id="show-price-distribution"
+                                    class="btn btn-outline-primary">Distribuição
+                                    de
+                                    Preço</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-9">
+                    <div class="visualization-container mb-4 d-none"
+                        id="visualization-container">
+                        <img id="visualization-image" src alt="Visualização">
+                        <button id="hide-visualization"
+                            class="btn btn-sm btn-outline-danger mt-2">Ocultar
+                            Visualização</button>
+                    </div>
+
+                    <h2 id="listing-heading">Todas as Motos</h2>
+                    <div id="similar-info" class="alert alert-info d-none">
+                        Mostrando motos similares a <span
+                            id="reference-listing"></span>
+                        <button id="clear-similar"
+                            class="btn btn-sm btn-outline-secondary ms-2">Mostrar
+                            Todas</button>
+                    </div>
+                    <div class="row" id="listings-container">
+                        <div class="col-12 text-center py-5">
+                            <div class="spinner-border text-primary"
+                                role="status">
+                                <span
+                                    class="visually-hidden">Carregando...</span>
+                            </div>
+                            <p class="mt-2">Carregando motos...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="listing-modal" tabindex="-1"
+            aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="modal-title">Detalhes da
+                            Moto</h5>
+                        <button type="button" class="btn-close"
+                            data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body" id="modal-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h4 id="modal-listing-title"></h4>
+                                <p><strong>Marca:</strong> <span
+                                        id="modal-listing-brand"></span></p>
+                                <p><strong>Modelo:</strong> <span
+                                        id="modal-listing-model"></span></p>
+                                <p><strong>Ano:</strong> <span
+                                        id="modal-listing-year"></span></p>
+                                <p><strong>Preço:</strong> <span
+                                        id="modal-listing-price"></span></p>
+                                <p><strong>Motor:</strong> <span
+                                        id="modal-listing-engine"></span>cc</p>
+                                <p><strong>Quilometragem:</strong> <span
+                                        id="modal-listing-mileage"></span>
+                                    km</p>
+                                <p><strong>Localização:</strong> <span
+                                        id="modal-listing-location"></span></p>
+                            </div>
+                            <div class="col-md-6">
+                                <h5>Motos Similares</h5>
+                                <div id="similar-listings"
+                                    class="list-group">
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary"
+                            data-bs-dismiss="modal">Fechar</button>
+                        <a id="view-listing" href="#" target="_blank"
+                            class="btn btn-primary">Ver Anúncio no OLX</a>
+                        <button id="view-on-graph" class="btn btn-success">Ver
+                            no Grafo</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script
+            src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+        <script>
+        const listingsContainer = document.getElementById('listings-container');
+        const stateFilter = document.getElementById('state-filter');
+        const brandFilter = document.getElementById('brand-filter');
+        const filterForm = document.getElementById('filter-form');
+        const searchBox = document.getElementById('search-box');
+        const searchResults = document.getElementById('search-results');
+        const listingModal = new bootstrap.Modal(document.getElementById('listing-modal'));
+        const visualizationContainer = document.getElementById('visualization-container');
+        const visualizationImage = document.getElementById('visualization-image');
+        
+        async function loadlistings(state = '', brand = '') {
+            listingsContainer.innerHTML = `
+                <div class="col-12 text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading listings...</p>
+                </div>
+            `;
+            
+            const url = `/listings?state=${state}&brand=${brand}`;
+            const response = await fetch(url);
+            const listings = await response.json();
+            
+            renderlistings(listings);
+        }
+        
+        function renderlistings(listings) {
+            if (listings.length === 0) {
+                listingsContainer.innerHTML = `
+                    <div class="col-12 text-center py-5">
+                        <p class="text-muted">No listings found matching your criteria.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            listingsContainer.innerHTML = '';
+            
+            listings.forEach(listing => {
+                const card = document.createElement('div');
+                card.className = 'col-md-4 mb-4';
+                
+                // Rendiriza imagens
+                const images = listing.images || listing.imagens || [];
+                const hasImages = images.length > 0;
+                const imageUrl = hasImages ? images[0].original : '';
+                const imageAlt = hasImages ? images[0].originalAlt : 'No image available';
+                
+                card.innerHTML = `
+                    <div class="card listing-card h-100">
+                        ${listing.similarity ? 
+                            `<span class="similarity-badge badge bg-primary">Similarity: ${(listing.similarity * 100).toFixed(0)}%</span>` : ''}
+                        
+                        ${hasImages ? 
+                            `<img src="${imageUrl}" class="card-img-top" alt="${imageAlt}" style="height: 200px; object-fit: cover;">` : 
+                            `<div class="card-img-top bg-light d-flex align-items-center justify-content-center" style="height: 200px;">
+                                <span class="text-muted">No image available</span>
+                             </div>`
+                        }
+                        
+                        <div class="card-body">
+                            <h5 class="card-title">${listing.title || 'Unnamed listing'}</h5>
+                            <h6 class="card-subtitle mb-2 text-muted">${listing.marca || ''} ${listing.modelo || ''}</h6>
+                            <p class="card-text">
+                                <strong>Price:</strong> ${listing.price || 'N/A'}<br>
+                                <strong>Year:</strong> ${listing.ano || 'N/A'}<br>
+                                <strong>Engine:</strong> ${listing.cilindrada || 'N/A'}cc<br>
+                                <strong>Location:</strong> ${listing.estado || 'N/A'}
+                            </p>
+                        </div>
+                        <div class="card-footer">
+                            <button class="btn btn-sm btn-primary view-details" data-listing-id="${listing.listId}">View Details</button>
+                            <button class="btn btn-sm btn-outline-success find-similar" data-listing-id="${listing.listId}">Find Similar</button>
+                        </div>
+                    </div>
+                `;
+                listingsContainer.appendChild(card);
+            });
+            
+            document.querySelectorAll('.view-details').forEach(button => {
+                button.addEventListener('click', () => viewlistingDetails(button.dataset.listingId));
+            });
+            
+            document.querySelectorAll('.find-similar').forEach(button => {
+                button.addEventListener('click', () => findSimilarlistings(button.dataset.listingId));
+            });
+        }
+        
+        async function viewlistingDetails(listingId) {
+            try {
+                if (typeof listingId === 'string' && !isNaN(listingId)) {
+                    listingId = parseInt(listingId);
+                }
+                
+                const url = `/listing/${listingId}`;
+
+                const response = await fetch(url);
+                
+                const listing = await response.json();
+                
+                
+                if (listing.error) {
+                    console.error('API returned error:', listing.error);
+                    alert(`Error loading listing details: ${listing.error}`);
+                    return;
+                }
+                
+                const modalBody = document.getElementById('modal-body');
+                const rowContent = modalBody.querySelector('.row').outerHTML;
+                modalBody.innerHTML = rowContent;
+                
+                const images = listing.images || listing.imagens || [];
+                
+                let imagesHtml = '';
+                if (images.length > 0) {
+                    const carouselId = `modal-carousel-${listingId}`;
+                    imagesHtml = `
+                        <div id="${carouselId}" class="carousel slide mb-3" data-bs-ride="carousel">
+                            <div class="carousel-inner">
+                                ${images.map((img, idx) => `
+                                    <div class="carousel-item ${idx === 0 ? 'active' : ''}">
+                                        <img src="${img.original}" class="d-block w-100" alt="${img.originalAlt || 'listing image'}" style="height: 300px; object-fit: contain;">
+                                    </div>
+                                `).join('')}
+                            </div>
+                            ${images.length > 1 ? `
+                                <button class="carousel-control-prev" type="button" data-bs-target="#${carouselId}" data-bs-slide="prev">
+                                    <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                                    <span class="visually-hidden">Previous</span>
+                                </button>
+                                <button class="carousel-control-next" type="button" data-bs-target="#${carouselId}" data-bs-slide="next">
+                                    <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                                    <span class="visually-hidden">Next</span>
+                                </button>
+                                <div class="carousel-indicators">
+                                    ${images.map((_, idx) => `
+                                        <button type="button" data-bs-target="#${carouselId}" data-bs-slide-to="${idx}" ${idx === 0 ? 'class="active" aria-current="true"' : ''} aria-label="Slide ${idx+1}"></button>
+                                    `).join('')}
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+
+                    const modalBodyTop = document.querySelector('.modal-body .row');
+                    modalBodyTop.insertAdjacentHTML('beforebegin', imagesHtml);
+                }
+                
+                document.getElementById('modal-title').textContent = listing.title || 'listing Details';
+                document.getElementById('modal-listing-title').textContent = listing.title || 'Unnamed listing';
+                document.getElementById('modal-listing-brand').textContent = listing.marca || 'N/A';
+                document.getElementById('modal-listing-model').textContent = listing.modelo || 'N/A';
+                document.getElementById('modal-listing-year').textContent = listing.ano || 'N/A';
+                document.getElementById('modal-listing-price').textContent = listing.price || 'N/A';
+                document.getElementById('modal-listing-engine').textContent = listing.cilindrada || 'N/A';
+                document.getElementById('modal-listing-mileage').textContent = listing.quilometragem || 'N/A';
+                document.getElementById('modal-listing-location').textContent = listing.locations || 'N/A';
+                
+                const viewListingBtn = document.getElementById('view-listing');
+                viewListingBtn.href = listing.url || '#';
+                viewListingBtn.disabled = !listing.url;
+                
+                const viewOnGraphBtn = document.getElementById('view-on-graph');
+                viewOnGraphBtn.dataset.listingId = listingId;
+                viewOnGraphBtn.onclick = () => {
+                    window.location.href = `/interactive-graph?highlight_id=${listingId}`;
+                };
+
+                const similarResponse = await fetch(`/similar/${listingId}`);
+                const similarlistings = await similarResponse.json();
+                
+                const similarContainer = document.getElementById('similar-listings');
+                similarContainer.innerHTML = '';
+                
+                if (similarlistings.length === 0) {
+                    similarContainer.innerHTML = '<p class="text-muted">No similar listings found.</p>';
+                } else {
+                    similarlistings.forEach(similar => {
+                        const item = document.createElement('a');
+                        item.className = 'list-group-item list-group-item-action';
+                        item.href = '#';
+                        item.innerHTML = `
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">${similar.title || 'Unnamed listing'}</h6>
+                                <small>${(similar.similarity * 100).toFixed(0)}% match</small>
+                            </div>
+                            <p class="mb-1">${similar.marca || ''} ${similar.modelo || ''}, ${similar.ano || 'N/A'}</p>
+                            <small>${similar.price || 'N/A'}</small>
+                        `;
+                        item.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            viewlistingDetails(similar.id);
+                        });
+                        similarContainer.appendChild(item);
+                    });
+                }
+                
+                listingModal.show();
+            } catch (error) {
+                console.error('Error loading listing details:', error);
+                alert('Error loading listing details. Please try again later.');
+            }
+        }
+        
+        async function findSimilarlistings(listingId) {
+            const listingResponse = await fetch(`/listing/${listingId}`);
+            const listing = await listingResponse.json();
+
+            const similarResponse = await fetch(`/similar/${listingId}`);
+            const similarlistings = await similarResponse.json();
+            
+            document.getElementById('listing-heading').textContent = 'Similar listings';
+            document.getElementById('similar-info').classList.remove('d-none');
+            document.getElementById('reference-listing').textContent = `${listing.title} (${listing.marca} ${listing.modelo}, ${listing.ano})`;
+            
+            listing.similarity = 1.0; // 100% similarity to itself
+            similarlistings.unshift(listing);
+            
+            renderlistings(similarlistings);
+            
+            document.getElementById('clear-similar').addEventListener('click', () => {
+                document.getElementById('listing-heading').textContent = 'All listings';
+                document.getElementById('similar-info').classList.add('d-none');
+                loadlistings(stateFilter.value, brandFilter.value);
+            });
+        }
+        
+        async function searchlistings(query) {
+            if (!query) {
+                searchResults.classList.add('d-none');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/search?q=${encodeURIComponent(query)}`);
+                const results = await response.json();
+                
+                searchResults.innerHTML = '';
+                
+                if (results.length === 0) {
+                    searchResults.innerHTML = `
+                        <div class="list-group-item">
+                            <p class="mb-0 text-muted">No results found for "${query}"</p>
+                        </div>
+                    `;
+                } else {
+                    results.forEach(result => {
+                        const listingId = result.listing.listId;
+                        
+                        const item = document.createElement('a');
+                        item.className = 'list-group-item list-group-item-action';
+                        item.href = '#';
+                        item.innerHTML = `
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">${result.listing.title || 'Unnamed listing'}</h6>
+                                <small>${(result.similarity * 100).toFixed(0)}% match</small>
+                            </div>
+                            <p class="mb-1">${result.listing.marca || ''} ${result.listing.modelo || ''}, ${result.listing.ano || 'N/A'}</p>
+                            <small>${result.listing.price || 'N/A'}</small>
+                        `;
+                        
+                        item.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            searchResults.classList.add('d-none');
+                            viewlistingDetails(listingId);
+                        });
+                        
+                        searchResults.appendChild(item);
+                    });
+                }
+                
+                searchResults.classList.remove('d-none');
+            } catch (error) {
+                console.error('Error searching listings:', error);
+                searchResults.innerHTML = `
+                    <div class="list-group-item">
+                        <p class="mb-0 text-danger">Error searching listings. Please try again.</p>
+                    </div>
+                `;
+                searchResults.classList.remove('d-none');
+            }
+        }
+        
+        function loadVisualization(type) {
+            visualizationImage.src = `/visualize?type=${type}&_=${Date.now()}`; // Add timestamp to prevent caching
+            visualizationContainer.classList.remove('d-none');
+        }
+        
+        filterForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            loadlistings(stateFilter.value, brandFilter.value);
+        });
+        
+        searchBox.addEventListener('input', (e) => {
+            searchlistings(e.target.value);
+        });
+        
+        document.addEventListener('click', (e) => {
+            if (!searchBox.contains(e.target) && !searchResults.contains(e.target)) {
+                searchResults.classList.add('d-none');
+            }
+        });
+        
+        document.getElementById('show-state-distribution').addEventListener('click', () => {
+            loadVisualization('state');
+        });
+        
+        document.getElementById('show-brand-distribution').addEventListener('click', () => {
+            loadVisualization('brand');
+        });
+        
+        document.getElementById('show-price-distribution').addEventListener('click', () => {
+            loadVisualization('price');
+        });
+        
+        document.getElementById('hide-visualization').addEventListener('click', () => {
+            visualizationContainer.classList.add('d-none');
+        });
+        
+        loadlistings();
+    </script>
+    </body>
+</html>

@@ -20,7 +20,20 @@ mg = GrafoOlx('motos_data.json')
 
 @app.route('/')
 def index():
-    return 
+    num_listings = len(mg.listings)
+    num_nodes = mg.G.number_of_nodes()
+    num_edges = mg.G.number_of_edges()
+    
+    # Obtém estados e marcas para filtragem
+    states = sorted(list(set([m['estado'] for m in mg.listings if m['estado']])))
+    brands = sorted(list(set([m['marca'] for m in mg.listings if m['marca']])))
+    
+    return render_template('index.html', 
+                           num_listings=num_listings,
+                           num_nodes=num_nodes,
+                           num_edges=num_edges,
+                           states=states,
+                           brands=brands)
 
 @app.route('/listings')
 def get_listings():
@@ -87,6 +100,78 @@ def get_similar(listing_id):
                 full_similar.append({**s, **m})
                 break
     return jsonify(full_similar)
+
+@app.route('/search')
+def search():
+    query = request.args.get('q', '')
+    if not query:
+        return jsonify([])
+    
+    results = mg.search_listings(query)
+    
+    valid_results = []
+    for result in results:
+        listing = result['listing']
+        listing_id = listing.get('listId')
+        
+        # Converte para string para comparação
+        str_id = str(listing_id)
+        
+        for m in mg.listings:
+            if m['listId'] == listing_id or str(m['listId']) == str_id:
+                result['listing'] = m
+                valid_results.append(result)
+                break
+    return jsonify(valid_results)
+
+@app.route('/visualize')
+def visualize():
+    visualization_type = request.args.get('type', 'graph')
+    color_by = request.args.get('color_by', 'community')
+    highlight_id = request.args.get('highlight_id', None)
+    
+    # Remove o parâmetro de timestamp se presente (usado para evitar cache do navegador)
+    params = {k: v for k, v in request.args.items() if k != '_'}
+    
+    # Cria uma chave de cache a partir dos parâmetros da requisição
+    cache_key = hashlib.md5(json.dumps(params, sort_keys=True).encode()).hexdigest()
+    cache_path = os.path.join(CACHE_DIR, f"{cache_key}.png")
+    
+    # Verifica se existe cache válida
+    if os.path.exists(cache_path):
+        cache_age = time.time() - os.path.getmtime(cache_path)
+        if cache_age < CACHE_EXPIRY:
+            # Retorna imagem salva em cache
+            return send_file(cache_path, mimetype='image/png')
+    
+    # Converte highlight_id para int se necessário
+    if highlight_id and highlight_id.isdigit():
+        highlight_id = int(highlight_id)
+    else:
+        highlight_id = None
+    
+    # Gera a visualização
+    if visualization_type == 'graph':
+        plt = mg.create_interactive_graph_data(highlight_id=highlight_id, color_by=color_by)
+    elif visualization_type == 'state':
+        plt = mg.visualize_state_distribution()
+    elif visualization_type == 'brand':
+        plt = mg.visualize_brand_distribution()
+    elif visualization_type == 'price':
+        plt = mg.visualize_price_distribution()
+    else:
+        plt = mg.visualize_graph()
+    
+    # Salva em cache
+    plt.savefig(cache_path, format='png')
+    
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    
+    plt.close()
+    
+    return send_file(buf, mimetype='image/png')
 
 @app.route('/communities')
 def communities_page():
@@ -179,3 +264,5 @@ def get_node_info(node_id):
     print(f"Retornando com sucesso dados para o nó {node_id}")
     return jsonify(node_data)
 
+if __name__ == '__main__':
+    app.run(debug=True) 
